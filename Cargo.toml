@@ -8,7 +8,7 @@ authors = [
     "Justin Perez <justinmp215@gmail.com>"
 ]
 repository = "https://github.com/melotic/reqwest-retry-after"
-keywords = ["http", "request", "reqwest", "retry after", "retry-after"]
+keywords = ["http", "request", "reqwest", "retry", "retry-after"]
 categories = ["asynchronous", "web-programming::http-client", "parsing"]
 readme = "README.md"
 
