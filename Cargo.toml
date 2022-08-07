@@ -1,0 +1,22 @@
+[package]
+name = "reqwest-retry-after"
+version = "0.1.0"
+edition = "2021"
+description = "Retry-After header support for reqwest"
+license = "MIT"
+authors = [
+    "Justin Perez <justinmp215@gmail.com>"
+]
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+async-trait = "0.1"
+reqwest = "0.11"
+reqwest-middleware = "0.1"
+tokio = { version = "1", features = ["sync"] }
+task-local-extensions = "0.1"
+
+[dev-dependencies]
+tokio = {version = "1", features = ["rt", "macros"]}
+httpmock = "0.6"
