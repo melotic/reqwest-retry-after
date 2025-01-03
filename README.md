@@ -8,7 +8,7 @@
 
 ## Usage
 
-Simply pass `RetryAfterMiddleware` to the `ClientWithMiddleware` builder.
+Pass `RetryAfterMiddleware` to the `ClientWithMiddleware` builder.
 
 ```rust
 use reqwest_middleware::{ClientBuilder, ClientWithMiddleware};

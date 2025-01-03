@@ -5,7 +5,7 @@
 //!
 //! ## Usage
 //!
-//! Simply pass [`RetryAfterMiddleware`] to the [`ClientWithMiddleware`] builder.
+//! Pass [`RetryAfterMiddleware`] to the [`ClientWithMiddleware`] builder.
 //!
 //! ```
 //! use reqwest_middleware::{ClientBuilder, ClientWithMiddleware};
@@ -27,11 +27,13 @@
 #![warn(missing_docs)]
 #![warn(rustdoc::missing_doc_code_examples)]
 
-use reqwest::{header::RETRY_AFTER, Request, Response};
-use reqwest_middleware::Middleware;
-use reqwest_middleware::{Next, Result};
 use std::time::{Duration, SystemTime};
-use task_local_extensions::Extensions;
+
+use http::{header::RETRY_AFTER, Extensions};
+use reqwest_middleware::{
+    reqwest::{Request, Response},
+    Middleware, Next, Result,
+};
 use tokio::sync::RwLock;
 
 /// The `RetryAfterMiddleware` is a [`Middleware`] that adds support for the `Retry-After`
