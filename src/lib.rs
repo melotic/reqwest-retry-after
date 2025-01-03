@@ -34,6 +34,7 @@ use reqwest_middleware::{
     reqwest::{Request, Response},
     Middleware, Next, Result,
 };
+use time::{format_description::well_known::Rfc2822, OffsetDateTime};
 use tokio::sync::RwLock;
 
 /// The `RetryAfterMiddleware` is a [`Middleware`] that adds support for the `Retry-After`
@@ -55,6 +56,16 @@ impl Default for RetryAfterMiddleware {
     fn default() -> Self {
         Self::new()
     }
+}
+
+fn parse_retry_value(val: &str) -> Option<SystemTime> {
+    if let Ok(secs) = val.parse::<u64>() {
+        return Some(SystemTime::now() + Duration::from_secs(secs));
+    }
+    if let Ok(date) = OffsetDateTime::parse(val, &Rfc2822) {
+        return Some(date.into());
+    }
+    None
 }
 
 #[async_trait::async_trait]
@@ -80,12 +91,8 @@ impl Middleware for RetryAfterMiddleware {
         if let Ok(res) = &res {
             match res.headers().get(RETRY_AFTER) {
                 Some(retry_after) => {
-                    // parse secs from header, return res if invalid header
-                    if let Ok(secs) = retry_after.to_str() {
-                        if let Ok(secs) = secs.parse::<u64>() {
-                            let retry_after = Some(SystemTime::now() + Duration::from_secs(secs));
-                            *self.retry_after.write().await = retry_after;
-                        }
+                    if let Ok(val) = retry_after.to_str() {
+                        *self.retry_after.write().await = parse_retry_value(val);
                     }
                 }
                 _ => *self.retry_after.write().await = None,
