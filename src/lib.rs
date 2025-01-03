@@ -5,7 +5,7 @@
 //!
 //! ## Usage
 //!
-//! Simply pass [`RetryAfterMiddleware`] to the [`ClientWithMiddleware`] builder.
+//! Pass [`RetryAfterMiddleware`] to the [`ClientWithMiddleware`] builder.
 //!
 //! ```
 //! use reqwest_middleware::{ClientBuilder, ClientWithMiddleware};
