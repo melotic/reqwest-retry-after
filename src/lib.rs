@@ -115,7 +115,7 @@ mod test {
     #[tokio::test]
     async fn test() {
         // create
-        let ra_test_duration = 2;
+        let test_duration = 2;
         let middleware = Arc::new(RetryAfterMiddleware::new());
 
         // build client with middleware
@@ -127,13 +127,13 @@ mod test {
 
         // create mock server
         let server = MockServer::start();
-        let ra_mock = server.mock(|when, then| {
+        let pre_ra_mock = server.mock(|when, then| {
             when.method(GET).path("/").header("RA", "true");
             then.status(200)
-                .header("Retry-After", ra_test_duration.to_string())
+                .header("Retry-After", test_duration.to_string())
                 .body("");
         });
-        let no_ra_mock = server.mock(|when, then| {
+        let post_ra_mock = server.mock(|when, then| {
             when.method(GET).path("/");
             then.status(200).body("");
         });
@@ -145,28 +145,37 @@ mod test {
         let url = Url::from_str(&server.url("/")).unwrap();
 
         // hit URL; get RA value and store it
-        let now = SystemTime::now();
+        let pre_test = SystemTime::now();
         client
             .get(url.clone())
             .header("RA", "true")
             .send()
             .await
             .unwrap();
-        ra_mock.assert_async().await;
-        test_some_retry_after(&middleware, &url).await;
-        test_valid_retry_after(&middleware, &url, now, ra_test_duration).await;
+        pre_ra_mock.assert_async().await;
+        test_valid_retry_after(&middleware, &url, pre_test, test_duration).await;
 
-        // hit same URL with stored RA; this should (1) sleep and (2) clear the stored RA afterward
-        // meanwhile, hit other URL, which should return instantly
-        let now = SystemTime::now();
-        client.get(server.url("/normal")).send().await.unwrap();
-        client.get(url.clone()).send().await.unwrap();
+        // hit other URL, which should return instantly
+        let normal = Url::from_str(&server.url("/normal")).unwrap();
+        let before_normal = SystemTime::now();
+        client.get(normal.clone()).send().await.unwrap();
         normal_mock.assert_async().await;
-        no_ra_mock.assert_async().await;
-        let duration = SystemTime::now().duration_since(now).unwrap();
+        assert!(
+            SystemTime::now()
+                .duration_since(before_normal)
+                .unwrap()
+                .as_secs_f64()
+                <= 0.2
+        );
+        test_absent_retry_after(&middleware, &normal).await;
 
-        // verify that we actually slept for the duration of the retry-after header
-        assert!(duration.as_secs_f64() >= ra_test_duration as f64);
+        // hit URL with stored RA
+        client.get(url.clone()).send().await.unwrap();
+        post_ra_mock.assert_async().await;
+
+        // this should have (1) slept and (2) cleared the stored RA afterward
+        let post_test = SystemTime::now().duration_since(pre_test).unwrap();
+        assert!(post_test.as_secs_f64() >= test_duration as f64);
         test_empty_retry_after(&middleware).await;
     }
 
@@ -185,8 +194,8 @@ mod test {
         assert!(duration.as_secs_f64() >= ra_dur as f64);
     }
 
-    async fn test_some_retry_after(middleware: &Arc<RetryAfterMiddleware>, url: &Url) {
-        assert!(middleware.retry_after.read().await.get(url).is_some());
+    async fn test_absent_retry_after(middleware: &Arc<RetryAfterMiddleware>, url: &Url) {
+        assert!(middleware.retry_after.read().await.get(url).is_none());
     }
 
     async fn test_empty_retry_after(middleware: &Arc<RetryAfterMiddleware>) {
