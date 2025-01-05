@@ -106,16 +106,23 @@ impl Middleware for RetryAfterMiddleware {
 
 #[cfg(test)]
 mod test {
-    use crate::RetryAfterMiddleware;
+    use std::{
+        str::FromStr,
+        sync::Arc,
+        time::{Duration, SystemTime},
+    };
+
     use httpmock::{Method::GET, MockServer};
     use reqwest::Url;
     use reqwest_middleware::ClientBuilder;
-    use std::{str::FromStr, sync::Arc, time::SystemTime};
+    use time::{format_description::well_known::Rfc2822, OffsetDateTime};
+
+    use crate::RetryAfterMiddleware;
 
     #[tokio::test]
     async fn test() {
         // create
-        let test_duration = 2;
+        let test_duration = Duration::from_secs(2);
         let middleware = Arc::new(RetryAfterMiddleware::new());
 
         // build client with middleware
@@ -130,7 +137,7 @@ mod test {
         let pre_ra_mock = server.mock(|when, then| {
             when.method(GET).path("/").header("RA", "true");
             then.status(200)
-                .header("Retry-After", test_duration.to_string())
+                .header("Retry-After", test_duration.as_secs().to_string())
                 .body("");
         });
         let post_ra_mock = server.mock(|when, then| {
@@ -174,8 +181,57 @@ mod test {
         post_ra_mock.assert_async().await;
 
         // this should have (1) slept and (2) cleared the stored RA afterward
-        let post_test = SystemTime::now().duration_since(pre_test).unwrap();
-        assert!(post_test.as_secs_f64() >= test_duration as f64);
+        let post_test = SystemTime::now();
+        assert!(post_test.duration_since(pre_test).unwrap() >= test_duration);
+        test_empty_retry_after(&middleware).await;
+    }
+
+    #[tokio::test]
+    async fn test_rfc2822() {
+        let mut test_duration = Duration::from_secs(2);
+
+        // Build server and client
+        let server = MockServer::start();
+        let middleware = Arc::new(RetryAfterMiddleware::new());
+        let client = ClientBuilder::new(reqwest::Client::new())
+            .with_arc(middleware.clone())
+            .build();
+
+        // Conversion to RFC 2822 floors the duration, so compensate with ceiling function.
+        let begin =
+            OffsetDateTime::now_utc().replace_nanosecond(0).unwrap() + Duration::from_secs(1);
+        let ra = begin + test_duration;
+        test_duration = (begin - ra).unsigned_abs();
+
+        let ra_mock = server.mock(|when, then| {
+            when.method(GET).path("/").header("RA", "true");
+            then.status(200)
+                .header("Retry-After", ra.format(&Rfc2822).unwrap())
+                .body("");
+        });
+        let no_ra_mock = server.mock(|when, then| {
+            when.method(GET).path("/");
+            then.status(200).body("");
+        });
+
+        // hit URL; store RA value
+        let url = Url::from_str(&server.url("/")).unwrap();
+        client
+            .get(url.clone())
+            .header("RA", "true")
+            .send()
+            .await
+            .unwrap();
+        test_valid_retry_after(&middleware, &url, SystemTime::now(), test_duration).await;
+        ra_mock.assert_async().await;
+
+        // hit URL with stored RA
+        client.get(url.clone()).send().await.unwrap();
+        no_ra_mock.assert_async().await;
+
+        // this should have (1) slept and (2) cleared the stored RA afterward
+        let duration = SystemTime::now().duration_since(begin.into()).unwrap();
+        assert!(duration >= test_duration);
         test_empty_retry_after(&middleware).await;
     }
 
@@ -183,15 +239,17 @@ mod test {
         middleware: &Arc<RetryAfterMiddleware>,
         url: &Url,
         now: SystemTime,
-        ra_dur: u32,
+        test_duration: Duration,
     ) {
-        let time = middleware.retry_after.read().await.get(url).cloned();
-        assert!(time.is_some());
-        let time = time.unwrap();
-        let duration = time.duration_since(now);
-        assert!(duration.is_ok());
-        let duration = duration.unwrap();
-        assert!(duration.as_secs_f64() >= ra_dur as f64);
+        let time = middleware
+            .retry_after
+            .read()
+            .await
+            .get(url)
+            .cloned()
+            .unwrap();
+        let duration = time.duration_since(now).unwrap();
+        assert!(duration >= test_duration);
     }
 
     async fn test_absent_retry_after(middleware: &Arc<RetryAfterMiddleware>, url: &Url) {
