@@ -22,5 +22,5 @@ task-local-extensions = "^0.1.4"
 time = { version = "^0.3.37", features = ["formatting", "parsing"] }
 
 [dev-dependencies]
-tokio = { version = "=1.46.0", features = ["rt", "macros"] }
+tokio = { version = "=1.46.1", features = ["rt", "macros"] }
 httpmock = "=0.7.0"
